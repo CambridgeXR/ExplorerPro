@@ -1,5 +1,6 @@
 // sw.js — VR Explorer Pro (atomic precache & auto-discover assets)
-const VERSION = 'vr-explorer-pro-2025-10-24';
+// version adjusted to reflect the Pro build
+const VERSION = 'vr-explorer-pro-atomic-2025-10-24';
 const PRECACHE = `precache-${VERSION}`;
 const TEMP = `temp-${VERSION}`;
 const RUNTIME = `runtime-${VERSION}`;
