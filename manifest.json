@@ -1,6 +1,6 @@
 {
   "name": "VR Explorer Pro",
-  "short_name": "Explorer",
+  "short_name": "Explorer Pro",
   "start_url": "/Explorer6/index.html",
   "scope": "/Explorer6/",
   "display": "standalone",
