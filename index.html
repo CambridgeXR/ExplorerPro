@@ -7,7 +7,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <link rel="apple-touch-icon" href="./icons/icon-192.png?v=13">
-  <title>VR Explorer</title>
+  <title>VR Explorer Pro</title>
   <link rel="manifest" href="./manifest.json?v=13" />
   <style>
     :root { --bg:#0b0f19; --fg:#e5e7eb; --muted:#9aa3b2; }
@@ -42,7 +42,8 @@
 
   <div class="ui">
     <div id="ui" class="ui-inner fade visible">
-      <h1 class="appTitle">VR Explorer</h1>
+      <!-- renamed -->
+      <h1 class="appTitle">VR Explorer Pro</h1>
       <button id="selectBtn" type="button">Select simulation</button>
       <button id="vrBtn" type="button" disabled>Enter VR</button>
       <button id="installBtn" type="button" style="display:none;">Install App</button>
@@ -104,7 +105,9 @@
 
     let yawOffset = 0;
     let mode = 'mono';
-    const SMOOTH_ALPHA = 0.12;
+
+    // slightly higher smoothing for less judder
+    const SMOOTH_ALPHA = 0.08; 
     const smoothedQuat = new THREE.Quaternion().copy(camera.quaternion);
 
     function recenter(){
@@ -117,6 +120,10 @@
         yawOffset = euler.y;
       }
     }
+
+    // added helper to smooth quaternion between frames even in XR mode
+    const lastQuat = new THREE.Quaternion();
+    const smoothQuat = new THREE.Quaternion();
 
     function renderMono(){
       if(controls) controls.update();
@@ -143,7 +150,14 @@
       renderer.setScissorTest(false);
     }
 
-    const xrLoop = () => { renderer.render(scene,camera); };
+    // smoother WebXR loop
+    const xrLoop = (time, frame) => {
+      const xrCam = renderer.xr.getCamera();
+      smoothQuat.copy(lastQuat).slerp(xrCam.quaternion, 0.25);
+      lastQuat.copy(smoothQuat);
+      xrCam.quaternion.copy(smoothQuat);
+      renderer.render(scene, xrCam);
+    };
 
     function animate(){
       if(mode==='webxr') return;
@@ -295,4 +309,3 @@
   </script>
 </body>
 </html>
-
