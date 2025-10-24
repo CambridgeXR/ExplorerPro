@@ -1,6 +1,5 @@
 // sw.js — VR Explorer Pro (atomic precache & auto-discover assets)
-// version adjusted to reflect the Pro build
-const VERSION = 'vr-explorer-pro-atomic-2025-10-24';
+const VERSION = 'vr-explorer-pro-atomic-2025-10-24b';
 const PRECACHE = `precache-${VERSION}`;
 const TEMP = `temp-${VERSION}`;
 const RUNTIME = `runtime-${VERSION}`;
@@ -67,10 +66,13 @@ self.addEventListener('install', (event) => {
       console.error('Install failed fetching index.html:', err);
       throw err;
     }
+
     const indexText = await indexResp.clone().text();
     await tempCache.put(indexUrl, indexResp.clone());
+
     const assets = discoverAssetsFromHtml(indexText);
     const toFetch = Array.from(new Set(assets));
+
     for (const assetUrl of toFetch) {
       try {
         if (assetUrl === new URL('./sw.js', self.location.href).href) continue;
@@ -82,6 +84,7 @@ self.addEventListener('install', (event) => {
         throw err;
       }
     }
+
     const precache = await caches.open(PRECACHE);
     const oldKeys = await precache.keys();
     await Promise.all(oldKeys.map(k => precache.delete(k)));
@@ -95,11 +98,15 @@ self.addEventListener('install', (event) => {
   })());
 });
 
+// ✅ Clean activation + cache purge for old versions
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
     await Promise.all(keys.map(key => {
-      if (![PRECACHE, RUNTIME].includes(key)) return caches.delete(key);
+      if (!key.includes(VERSION)) {
+        console.log('Deleting old cache:', key);
+        return caches.delete(key);
+      }
     }));
     await self.clients.claim();
     console.log('Activated version:', VERSION);
@@ -139,5 +146,7 @@ self.addEventListener('fetch', (event) => {
 
 self.addEventListener('message', (event) => {
   const data = event.data || {};
-  if (data && data.type === 'SKIP_WAITING') self.skipWaiting();
+  if (data && (data.type === 'SKIP_WAITING' || data === 'SKIP_WAITING')) {
+    self.skipWaiting();
+  }
 });
