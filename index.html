@@ -42,7 +42,7 @@
 
   <div class="ui">
     <div id="ui" class="ui-inner fade visible">
-      <!-- renamed -->
+      <!-- App title (already correct in-app) -->
       <h1 class="appTitle">VR Explorer Pro</h1>
       <button id="selectBtn" type="button">Select simulation</button>
       <button id="vrBtn" type="button" disabled>Enter VR</button>
@@ -106,8 +106,8 @@
     let yawOffset = 0;
     let mode = 'mono';
 
-    // slightly higher smoothing for less judder
-    const SMOOTH_ALPHA = 0.08; 
+    // Mono/stereo smoothing (keeps previous approach but slightly tuned)
+    const SMOOTH_ALPHA = 0.08;
     const smoothedQuat = new THREE.Quaternion().copy(camera.quaternion);
 
     function recenter(){
@@ -120,10 +120,6 @@
         yawOffset = euler.y;
       }
     }
-
-    // added helper to smooth quaternion between frames even in XR mode
-    const lastQuat = new THREE.Quaternion();
-    const smoothQuat = new THREE.Quaternion();
 
     function renderMono(){
       if(controls) controls.update();
@@ -150,14 +146,56 @@
       renderer.setScissorTest(false);
     }
 
-    // smoother WebXR loop
+    //
+    // ===== IMPROVED XR SMOOTHING (safe & non-intrusive) =====
+    //
+    // Strategy:
+    // - Read yaw (rotation around Y) from the XR camera quaternion each XR frame.
+    // - Smooth the yaw angle with a **time-based exponential smoothing** filter (frame-rate independent).
+    // - Apply the smoothed yaw to the sphere by setting `sphere.rotation.y = -smoothedYaw`.
+    // This avoids modifying the XR camera quaternion (which can be risky) and produces very smooth panning.
+    //
+
+    let lastXrTime = null;
+    let smoothedXrYaw = 0; // radians
+    const XR_SMOOTHING_SPEED = 12.0; // responsiveness; higher = less lag, lower = smoother. Tweak if needed.
+
+    function _normalizeAngleRad(a) {
+      // Normalize to range [-PI, PI]
+      return Math.atan2(Math.sin(a), Math.cos(a));
+    }
+
     const xrLoop = (time, frame) => {
+      // `time` is DOMHighResTimeStamp in milliseconds
+      let dt = 0.016; // default to 60fps
+      if (lastXrTime !== null) {
+        dt = Math.max(0.001, (time - lastXrTime) / 1000);
+      }
+      lastXrTime = time;
+
+      // Get the XR camera quaternion (three.js camera that represents headset pose)
       const xrCam = renderer.xr.getCamera();
-      smoothQuat.copy(lastQuat).slerp(xrCam.quaternion, 0.25);
-      lastQuat.copy(smoothQuat);
-      xrCam.quaternion.copy(smoothQuat);
+
+      // Compute yaw from xrCam quaternion in YXZ order (matches earlier code)
+      const e = new THREE.Euler().setFromQuaternion(xrCam.quaternion, 'YXZ');
+      const targetYaw = _normalizeAngleRad(e.y);
+
+      // time-based exponential smoothing: alpha = 1 - exp(-k * dt)
+      const alpha = 1 - Math.exp(-XR_SMOOTHING_SPEED * dt);
+
+      // Smooth yaw, but handle wrap-around (angles)
+      const diff = _normalizeAngleRad(targetYaw - smoothedXrYaw);
+      smoothedXrYaw = smoothedXrYaw + diff * alpha;
+
+      // Apply the smoothed yaw to the sphere (negative because camera yaw rotates scene oppositely)
+      sphere.rotation.y = -smoothedXrYaw;
+
+      // Render using the real XR camera (we don't modify its quaternion)
       renderer.render(scene, xrCam);
     };
+    //
+    // ===== END XR SMOOTHING
+    //
 
     function animate(){
       if(mode==='webxr') return;
@@ -243,8 +281,12 @@
         if(!supported) return false;
         const session = await navigator.xr.requestSession('immersive-vr',{ optionalFeatures:['local-floor','bounded-floor'] });
         renderer.xr.setReferenceSpaceType('local');
+        // Set our XR animation loop which performs smoothed scene yaw
         renderer.setAnimationLoop(xrLoop);
         await renderer.xr.setSession(session);
+        // reset XR smoothing state
+        lastXrTime = null;
+        smoothedXrYaw = 0;
         mode='webxr';
         return true;
       }catch(e){ return false; }
